@@ -1,4 +1,5 @@
 import re
+import sys
 
 import markdown
 from markdown import etree
@@ -30,6 +31,8 @@ class ImageTreeprocessor(markdown.treeprocessors.Treeprocessor):
         # List of (Image, height) to be merged for the result
         self.current_image = None
         self.current_image_draw = None
+        self.current_image_x = 0
+        self.current_image_y = 0
         self.current_y = 0
         self.image_width = max(width_spec, key=lambda x: x[2])[2]
         self.images = []
@@ -44,8 +47,8 @@ class ImageTreeprocessor(markdown.treeprocessors.Treeprocessor):
         return re.sub('\s+', ' ', text)
 
     def ensure_image(self, h):
-        if self.current_y + h > self.current_image.size[1]:
-            if self.current_y == 0:
+        if self.current_image_y + h > self.current_image.size[1]:
+            if self.current_image_y == 0:
                 print "Image block size too small!  Results will be cropped..."
                 return
 
@@ -78,14 +81,7 @@ class ImageTreeprocessor(markdown.treeprocessors.Treeprocessor):
     def handle_paragraph(self, node):
         text = self.compact_whitespace(node.text)
 
-        draw = self.current_image_draw
-        (w, h) = draw.textsize(text, font=self.image_font)
-        self.ensure_image(h)
-
-        draw = self.current_image_draw
-        draw.text((0, self.current_y), text, font=self.image_font)
-
-        self.current_y += h
+        self.render_wrapped_text(text, (255, 255, 255, 255), True)
 
     def handle_unknown(self, node):
         print "Unknown tag: %s" % node.tag
@@ -95,11 +91,55 @@ class ImageTreeprocessor(markdown.treeprocessors.Treeprocessor):
 
         self.current_image = Image.new("RGBA", (self.image_width, IMAGE_BLOCK_HEIGHT))
         self.current_image_draw = ImageDraw.Draw(self.current_image)
-        self.current_y = 0
+        self.current_image_y = 0
+
+    def render_wrapped_text(self, text, color, end_block=False):
+        start_index = 0
+        end_index = 0
+        draw = self.current_image_draw
+
+        parts = text.split(" ")
+        while end_index < len(parts):
+            w = 0
+            while end_index < len(parts):
+                (w, h) = draw.textsize(" ".join(parts[start_index:end_index + 1]),
+                                       font=self.image_font)
+                if self.current_image_x + w > self.image_width:
+                    break
+
+                end_index += 1
+
+            if end_index > start_index:
+                self.ensure_image(h)
+
+                text_frag = " ".join(parts[start_index:end_index])
+                draw.text((self.current_image_x, self.current_image_y),
+                          text_frag,
+                          font=self.image_font, fill=color)
+
+            if end_index < len(parts):
+                self.current_image_x = 0
+
+                self.current_image_y += h
+                self.current_y += h
+            else:
+                # If we are at the end of a block, set X back to 0 
+                if end_block:
+                    self.current_image_x = 0
+
+                    self.current_image_y += h
+                    self.current_y += h
+                # Otherwise, leave X at the end of the last word, plus a space
+                else:
+                    # Measure this segment with a space on the end 
+                    (w, h) = draw.textsize(text_frag + " ", font=self.image_font)
+                    self.current_image_x = self.current_image_x + w
+
+            start_index = end_index
 
     def save_image_block(self):
         if self.current_image is not None:
-            self.images.append((self.current_image, self.current_y))
+            self.images.append((self.current_image, self.current_image_y))
             del self.current_image_draw
 
     def run(self, root):
