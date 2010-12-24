@@ -6,13 +6,11 @@ other image formats).
 Currently, it uses Python's PIL image library to render the results and 
 python-markdown to parse markdown.
 
+NOTE: This has only been tested on Python 2.6 so far...
+
 Getting Started
 ---------------
-- Install Python 2.6+
-- Install python setuptools
 - easy_install PIL
 - easy_install Markdown
-
-Running
--------
-- python md2png.py <markdown filename> [output filename]
+- cd src
+- python convert.py <markdown filename> [output filename] [width]
