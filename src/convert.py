@@ -23,7 +23,7 @@ if __name__ == "__main__":
 
     print "Reading %s" % input_filename
     f = open(input_filename)
-    img = md2png.md2png(f.read(), (0, 0, width))
+    img = md2png.md2png(f.read(), [(0, 0, width)])
     f.close()
 
     print "Saving to %s" % output_filename

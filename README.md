@@ -1,7 +1,8 @@
 Overview
 --------
 This project attempts to render John Gruber's markdown format to PNG (or
-other image formats).
+other image formats).  The markdown syntax lives 
+[here](http://daringfireball.net/projects/markdown/syntax).
 
 Currently, it uses Python's PIL image library to render the results and 
 python-markdown to parse markdown.
