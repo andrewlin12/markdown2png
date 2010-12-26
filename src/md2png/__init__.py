@@ -182,7 +182,6 @@ class ImageTreeprocessor(markdown.treeprocessors.Treeprocessor):
             # Draw the number
             draw = self.image_draw
             current_number = "%d" % self.list_item_nums[-1]
-            print current_number
             (w, h) = draw.textsize(current_number, font=self.default_font)
             x = self.image_x - w - self.config["bullet_outdent"]
             draw.text((x, self.image_y), current_number + ".",
