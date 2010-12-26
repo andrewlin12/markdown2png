@@ -40,6 +40,7 @@ class ImageTreeprocessor(markdown.treeprocessors.Treeprocessor):
         self.image_y = 0
         self.indent = 0
         self.links = []
+
         # Stack of list types and item numbers
         self.list_types = []
         self.list_item_nums = []
@@ -82,11 +83,22 @@ class ImageTreeprocessor(markdown.treeprocessors.Treeprocessor):
 
         self.width_spec = width_spec
         self.width_spec.sort()
+        self.width_spec_index = -1
+        self.apply_width_spec()
+
+    def apply_width_spec(self, h=0):
+        if self.width_spec_index + 1 < len(self.width_spec):
+            if self.width_spec[self.width_spec_index + 1][0] <= self.y + h:
+                self.width_spec_index += 1
+                self.start_x = self.width_spec[self.width_spec_index][1]
+                self.end_x = self.start_x + self.width_spec[self.width_spec_index][2]
 
     def compact_whitespace(self, text):
         return re.sub('\s+', ' ', text)
 
     def ensure_image(self, h):
+        self.apply_width_spec(h)
+
         if self.image_y + h > self.image.size[1]:
             if self.image_y == 0:
                 print "Image block size too small!  Results will be cropped..."
@@ -144,12 +156,12 @@ class ImageTreeprocessor(markdown.treeprocessors.Treeprocessor):
                 self.handle_node(child)
 
     def handle_div(self, node):
-        if self.image_x != 0:
+        if self.image_x > self.start_x + self.indent:
             self.newline()
 
         self.handle_children(node)
 
-        if self.image_x != 0:
+        if self.image_x > self.start_x + self.indent:
             self.newline()
 
     def handle_em(self, node):
@@ -171,8 +183,8 @@ class ImageTreeprocessor(markdown.treeprocessors.Treeprocessor):
         self.newline()
         h = self.config["margin_bottom"]
         horizontal_padding = self.config["hr_padding"]
-        self.image_draw.line((horizontal_padding, self.image_y + h / 2,
-                              self.image_width - horizontal_padding, self.image_y + h / 2), fill=(255, 255, 255, 255))
+        self.image_draw.line((self.start_x + horizontal_padding, self.image_y + h / 2,
+                              self.end_x - horizontal_padding, self.image_y + h / 2), fill=(255, 255, 255, 255))
         self.newline(h)
 
     def handle_li(self, node):
@@ -300,9 +312,9 @@ class ImageTreeprocessor(markdown.treeprocessors.Treeprocessor):
         if h == -1:
             h = self.line_height
 
-        self.image_x = self.indent
         self.image_y += h
         self.y += h
+        self.image_x = self.start_x + self.indent
 
         self.line_height = 0
 
@@ -345,7 +357,7 @@ class ImageTreeprocessor(markdown.treeprocessors.Treeprocessor):
                 while end_index < len(parts):
                     (w, h) = draw.textsize(" ".join(parts[start_index:end_index + 1]),
                                            font=font)
-                    if self.image_x + w > self.image_width:
+                    if self.image_x + w > self.end_x:
                         break
 
                     end_index += 1
@@ -404,5 +416,5 @@ def md2png(md_str, width_spec, config):
     md = markdown.Markdown(extensions=[img_ext])
     md.convert(md_str)
 
-    print img_ext.get_links()
+    # print img_ext.get_links()
     return img_ext.get_image()
