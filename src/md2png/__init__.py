@@ -56,10 +56,13 @@ class ImageTreeprocessor(markdown.treeprocessors.Treeprocessor):
             "code_indent": 16,
             "code_font_path": "/usr/share/fonts/truetype/freefont/FreeMono.ttf",
             "code_font_size": 14,
+            "color": (255, 255, 255, 255),
             "default_font_path": "/usr/share/fonts/truetype/freefont/FreeSans.ttf",
             "font_size": 12,
+            "hr_color": (220, 220, 220, 255),
             "hr_padding": 0,
             "italics_font_path": "/usr/share/fonts/truetype/freefont/FreeSansOblique.ttf",
+            "link_color": (100, 100, 255, 255),
             "list_indent": 28,
             "list_item_margin_bottom": 4,
             "bullet_outdent": 8,
@@ -128,12 +131,12 @@ class ImageTreeprocessor(markdown.treeprocessors.Treeprocessor):
         text = node.text
 
         if "href" in node.attrib:
-            blocks = self.render_text(node.text, (100, 100, 255, 255), False)
+            blocks = self.render_text(node.text, self.config["link_color"], False)
             self.links.append((node.attrib["href"], blocks))
         else:
-            self.render_text(node.text, (255, 255, 255, 255), False)
+            self.render_text(node.text, self.config["color"], False)
         self.handle_children(node)
-        self.render_text(node.tail, (255, 255, 255, 255), False)
+        self.render_text(node.tail, self.config["color"], False)
 
     def handle_blockquote(self, node):
         indent = self.config["blockquote_indent"]
@@ -146,9 +149,9 @@ class ImageTreeprocessor(markdown.treeprocessors.Treeprocessor):
     def handle_code(self, node):
         text = node.text
 
-        self.render_text(node.text, (255, 255, 255, 255), False, font=self.code_font)
+        self.render_text(node.text, self.config["color"], False, font=self.code_font)
         self.handle_children(node)
-        self.render_text(node.tail, (255, 255, 255, 255), False)
+        self.render_text(node.tail, self.config["color"], False)
 
     def handle_children(self, node):
         if len(node) > 0:
@@ -167,15 +170,15 @@ class ImageTreeprocessor(markdown.treeprocessors.Treeprocessor):
     def handle_em(self, node):
         text = node.text
 
-        self.render_text(node.text, (255, 255, 255, 255), False, font=self.italics_font)
+        self.render_text(node.text, self.config["color"], False, font=self.italics_font)
         self.handle_children(node)
-        self.render_text(node.tail, (255, 255, 255, 255), False)
+        self.render_text(node.tail, self.config["color"], False)
 
     def handle_h(self, node):
         text = node.text
 
         font = getattr(self, node.tag + "_font")
-        self.render_text(node.text, (255, 255, 255, 255), True, font=font)
+        self.render_text(node.text, self.config["color"], True, font=font)
         # TODO: Make this HR padding-bottom configurable
         self.newline()
 
@@ -184,7 +187,7 @@ class ImageTreeprocessor(markdown.treeprocessors.Treeprocessor):
         h = self.config["margin_bottom"]
         horizontal_padding = self.config["hr_padding"]
         self.image_draw.line((self.start_x + horizontal_padding, self.image_y + h / 2,
-                              self.end_x - horizontal_padding, self.image_y + h / 2), fill=(255, 255, 255, 255))
+                              self.end_x - horizontal_padding, self.image_y + h / 2), fill=self.config["hr_color"])
         self.newline(h)
 
     def handle_li(self, node):
@@ -199,10 +202,10 @@ class ImageTreeprocessor(markdown.treeprocessors.Treeprocessor):
             draw.ellipse((x, y,
                           x + BULLET_DIAMETER,
                           y + BULLET_DIAMETER),
-                          outline=(255, 255, 255, 255),
-                          fill=(255, 255, 255, 255))
+                          outline=self.config["color"],
+                          fill=self.config["color"])
 
-            self.render_text(node.text, (255, 255, 255, 255), True)
+            self.render_text(node.text, self.config["color"], True)
             self.handle_children(node)
         elif list_type == "ordered":
             # Draw the number
@@ -213,15 +216,15 @@ class ImageTreeprocessor(markdown.treeprocessors.Treeprocessor):
             x = self.image_x - w - self.config["bullet_outdent"]
             draw.text((x, self.image_y), current_number + ".",
                       font=self.default_font,
-                      fill=(255, 255, 255, 255))
+                      fill=self.config["color"])
 
             self.list_item_nums[-1] += 1
 
-            self.render_text(node.text, (255, 255, 255, 255), True)
+            self.render_text(node.text, self.config["color"], True)
             self.handle_children(node)
 
         # REVIEW: Ignore tail text on li items b/c.  Is this okay?
-        # self.render_text(node.tail, (255, 255, 255, 255), True)
+        # self.render_text(node.tail, self.config["color"], True)
         self.newline(self.config["list_item_margin_bottom"])
 
     def handle_node(self, node):
@@ -264,10 +267,10 @@ class ImageTreeprocessor(markdown.treeprocessors.Treeprocessor):
         self.newline()
 
     def handle_p(self, node):
-        self.render_text(node.text, (255, 255, 255, 255), False)
+        self.render_text(node.text, self.config["color"], False)
         self.handle_children(node)
 
-        self.render_text(node.tail, (255, 255, 255, 255), True)
+        self.render_text(node.tail, self.config["color"], True)
         self.newline(self.config["margin_bottom"])
 
     def handle_pre(self, node):
@@ -288,9 +291,9 @@ class ImageTreeprocessor(markdown.treeprocessors.Treeprocessor):
     def handle_strong(self, node):
         text = node.text
 
-        self.render_text(node.text, (255, 255, 255, 255), False, font=self.bold_font)
+        self.render_text(node.text, self.config["color"], False, font=self.bold_font)
         self.handle_children(node)
-        self.render_text(node.tail, (255, 255, 255, 255), False)
+        self.render_text(node.tail, self.config["color"], False)
 
     def handle_ul(self, node):
         indent = self.config["list_indent"]
@@ -361,6 +364,11 @@ class ImageTreeprocessor(markdown.treeprocessors.Treeprocessor):
                         break
 
                     end_index += 1
+
+                # In the case that we can't fit a single word on this line
+                # just render the first word
+                if start_index == end_index:
+                    end_index = start_index + 1
 
                 text_frag = " ".join(parts[start_index:end_index])
                 draw = self.ensure_image(h)
