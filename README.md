@@ -14,16 +14,16 @@ python-markdown to parse markdown.
 Supported Elements
 ------------------
 - Block Elements
-    - headers
-    - unordered list
     - paragraph
+    - headers
+    - blockquote
+    - lists
     - code block
     - hr
-    - blockquote
 - Inline Elements
+    - anchor
     - emphasis
     - code
-    - anchor
 
 ***
 

@@ -10,14 +10,18 @@ BULLET_DIAMETER = 4
 IMAGE_BLOCK_HEIGHT = 1000
 
 class ImageExtension(markdown.Extension):
-    def __init__(self, width_spec):
+    def __init__(self, width_spec, config):
+        self.config = config
         self.width_spec = width_spec
+
+    def get_links(self):
+        return self.treeprocessor.get_links()
 
     def get_image(self):
         return self.treeprocessor.get_image()
 
     def extendMarkdown(self, md, md_globals):
-        self.treeprocessor = ImageTreeprocessor(self.width_spec)
+        self.treeprocessor = ImageTreeprocessor(self.width_spec, self.config)
         md.treeprocessors.add('m2png', self.treeprocessor, '_end')
 
 
@@ -35,6 +39,7 @@ class ImageTreeprocessor(markdown.treeprocessors.Treeprocessor):
         self.image_x = 0
         self.image_y = 0
         self.indent = 0
+        self.links = []
         # Stack of list types and item numbers
         self.list_types = []
         self.list_item_nums = []
@@ -89,6 +94,8 @@ class ImageTreeprocessor(markdown.treeprocessors.Treeprocessor):
 
             self.new_image_block()
 
+        return self.image_draw
+
     def get_image(self):
         # Add the last used image if necessary
         self.save_image_block()
@@ -102,11 +109,17 @@ class ImageTreeprocessor(markdown.treeprocessors.Treeprocessor):
 
         return final
 
+    def get_links(self):
+        return self.links
+
     def handle_a(self, node):
         text = node.text
 
-        # TODO: Save the bounds for these link somewhere
-        self.render_text(node.text, (100, 100, 255, 255), False)
+        if "href" in node.attrib:
+            blocks = self.render_text(node.text, (100, 100, 255, 255), False)
+            self.links.append((node.attrib["href"], blocks))
+        else:
+            self.render_text(node.text, (255, 255, 255, 255), False)
         self.handle_children(node)
         self.render_text(node.tail, (255, 255, 255, 255), False)
 
@@ -166,8 +179,9 @@ class ImageTreeprocessor(markdown.treeprocessors.Treeprocessor):
         list_type = self.list_types[-1]
         if list_type == "unordered":
             # Draw the bullet
-            draw = self.image_draw
-            (w, h) = draw.textsize("E", font=self.default_font)
+            (w, h) = self.image_draw.textsize("E", font=self.default_font)
+            draw = self.ensure_image(h)
+
             x = self.image_x - BULLET_DIAMETER - self.config["bullet_outdent"]
             y = self.image_y + (h - BULLET_DIAMETER) / 2
             draw.ellipse((x, y,
@@ -180,9 +194,10 @@ class ImageTreeprocessor(markdown.treeprocessors.Treeprocessor):
             self.handle_children(node)
         elif list_type == "ordered":
             # Draw the number
-            draw = self.image_draw
             current_number = "%d" % self.list_item_nums[-1]
-            (w, h) = draw.textsize(current_number, font=self.default_font)
+            (w, h) = self.image_draw.textsize(current_number, font=self.default_font)
+            draw = self.ensure_image(h)
+
             x = self.image_x - w - self.config["bullet_outdent"]
             draw.text((x, self.image_y), current_number + ".",
                       font=self.default_font,
@@ -198,7 +213,7 @@ class ImageTreeprocessor(markdown.treeprocessors.Treeprocessor):
         self.newline(self.config["list_item_margin_bottom"])
 
     def handle_node(self, node):
-        print "Handling %s" % node.tag
+        # print "Handling %s" % node.tag
         handlers = {
             "a": self.handle_a,
             "code": self.handle_code,
@@ -220,7 +235,7 @@ class ImageTreeprocessor(markdown.treeprocessors.Treeprocessor):
             "ul": self.handle_ul,
         }
         handlers.get(node.tag, self.handle_unknown)(node)
-        print "Done with %s" % node.tag
+        # print "Done with %s" % node.tag
 
     def handle_ol(self, node):
         indent = self.config["list_indent"]
@@ -240,7 +255,6 @@ class ImageTreeprocessor(markdown.treeprocessors.Treeprocessor):
         self.render_text(node.text, (255, 255, 255, 255), False)
         self.handle_children(node)
 
-        # TODO: Make padding-bottom of <p> configurable
         self.render_text(node.tail, (255, 255, 255, 255), True)
         self.newline(self.config["margin_bottom"])
 
@@ -303,16 +317,20 @@ class ImageTreeprocessor(markdown.treeprocessors.Treeprocessor):
         if text is None:
             return
 
+        blocks = []
+
         if font is None:
             font = self.default_font
 
         if self.in_pre:
-            draw = self.image_draw
             lines = text.split("\n")
             for line in lines:
-                draw.text((self.image_x, self.image_y), line, font=font, fill=color)
+                (w, h) = self.image_draw.textsize(line, font=font)
+                draw = self.ensure_image(h)
 
-                (w, h) = draw.textsize(line, font=font)
+                draw.text((self.image_x, self.image_y), line, font=font, fill=color)
+                blocks.append((self.image_x, self.y, w, h))
+
                 self.line_height = max(h, self.line_height)
                 self.newline()
         else:
@@ -333,14 +351,19 @@ class ImageTreeprocessor(markdown.treeprocessors.Treeprocessor):
                     end_index += 1
 
                 text_frag = " ".join(parts[start_index:end_index])
-                if end_index > start_index:
-                    self.ensure_image(h)
+                draw = self.ensure_image(h)
 
-                    self.line_height = max(h, self.line_height)
+                self.line_height = max(h, self.line_height)
 
-                    draw.text((self.image_x, self.image_y),
-                              text_frag,
-                              font=font, fill=color)
+                # print "Rendering %s" % text_frag
+                draw.text((self.image_x, self.image_y),
+                          text_frag,
+                          font=font, fill=color)
+
+                # Get a real measurement segment 
+                (w, h) = draw.textsize(text_frag,
+                                       font=font)
+                blocks.append((self.image_x, self.y, w, h))
 
                 if end_index < len(parts):
                     self.newline()
@@ -350,12 +373,11 @@ class ImageTreeprocessor(markdown.treeprocessors.Treeprocessor):
                         self.newline()
                     # Otherwise, leave X at the end of the last word
                     else:
-                        # Measure this segment 
-                        (w, h) = draw.textsize(text_frag,
-                                               font=font)
                         self.image_x += w
 
                 start_index = end_index
+
+        return blocks
 
     def save_image_block(self):
         if self.image is not None:
@@ -368,7 +390,7 @@ class ImageTreeprocessor(markdown.treeprocessors.Treeprocessor):
 
         return root
 
-def md2png(md_str, width_spec):
+def md2png(md_str, width_spec, config):
     """
     md_str: Valid markdown in a string
     width_spec: A list of tuples (y-offset, x-offset, width) specifying the
@@ -377,9 +399,10 @@ def md2png(md_str, width_spec):
                 the next greater y-offset.  The largest y-offset will be used
                 until the end of rendering.
     """
-    img_ext = ImageExtension(width_spec)
+    img_ext = ImageExtension(width_spec, config)
 
     md = markdown.Markdown(extensions=[img_ext])
     md.convert(md_str)
 
+    print img_ext.get_links()
     return img_ext.get_image()
