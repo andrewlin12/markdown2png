@@ -28,29 +28,52 @@ class ImageTreeprocessor(markdown.treeprocessors.Treeprocessor):
     pre-measuring) and assembles the chunks at the end. 
     """
 
-    def __init__(self, width_spec):
+    def __init__(self, width_spec, config={}):
         # List of (Image, height) to be merged for the result
         self.image = None
         self.image_draw = None
         self.image_x = 0
         self.image_y = 0
         self.indent = 0
+        # Stack of list types and item numbers
+        self.list_types = []
+        self.list_item_nums = []
         self.y = 0
         self.image_width = max(width_spec, key=lambda x: x[2])[2]
         self.images = []
         self.line_height = 0
         self.in_pre = False
 
+        self.config = {
+            "bold_font_path": "/usr/share/fonts/truetype/freefont/FreeSansBold.ttf",
+            "blockquote_indent": 16,
+            "code_indent": 16,
+            "code_font_path": "/usr/share/fonts/truetype/freefont/FreeMono.ttf",
+            "code_font_size": 14,
+            "default_font_path": "/usr/share/fonts/truetype/freefont/FreeSans.ttf",
+            "font_size": 12,
+            "hr_padding": 0,
+            "italics_font_path": "/usr/share/fonts/truetype/freefont/FreeSansOblique.ttf",
+            "list_indent": 28,
+            "list_item_margin_bottom": 4,
+            "bullet_outdent": 8,
+            "margin_bottom": 16,
+        }
+        self.config.update(config)
+
         # TODO: Make this configurable
-        self.default_font = ImageFont.truetype("/usr/share/fonts/truetype/ubuntu-font-family/Ubuntu-R.ttf", 12)
-        self.bold_font = ImageFont.truetype("/usr/share/fonts/truetype/ubuntu-font-family/Ubuntu-B.ttf", 12)
-        self.h1_font = ImageFont.truetype("/usr/share/fonts/truetype/ubuntu-font-family/Ubuntu-R.ttf", 32)
-        self.h2_font = ImageFont.truetype("/usr/share/fonts/truetype/ubuntu-font-family/Ubuntu-R.ttf", 28)
-        self.h3_font = ImageFont.truetype("/usr/share/fonts/truetype/ubuntu-font-family/Ubuntu-R.ttf", 24)
-        self.h4_font = ImageFont.truetype("/usr/share/fonts/truetype/ubuntu-font-family/Ubuntu-R.ttf", 20)
-        self.h5_font = ImageFont.truetype("/usr/share/fonts/truetype/ubuntu-font-family/Ubuntu-R.ttf", 16)
-        self.h6_font = ImageFont.truetype("/usr/share/fonts/truetype/ubuntu-font-family/Ubuntu-R.ttf", 14)
-        self.code_font = ImageFont.truetype("/usr/share/fonts/truetype/freefont/FreeMono.ttf", 14)
+        font_size = self.config["font_size"]
+        default_font_path = self.config["default_font_path"]
+        self.default_font = ImageFont.truetype(default_font_path, font_size)
+        self.bold_font = ImageFont.truetype(self.config["bold_font_path"], font_size)
+        self.code_font = ImageFont.truetype(self.config["code_font_path"], self.config["code_font_size"])
+        self.h1_font = ImageFont.truetype(self.config["default_font_path"], font_size * 3)
+        self.h2_font = ImageFont.truetype(self.config["default_font_path"], int(font_size * 2.5))
+        self.h3_font = ImageFont.truetype(self.config["default_font_path"], font_size * 2)
+        self.h4_font = ImageFont.truetype(self.config["default_font_path"], int(font_size * 1.75))
+        self.h5_font = ImageFont.truetype(self.config["default_font_path"], int(font_size * 1.5))
+        self.h6_font = ImageFont.truetype(self.config["default_font_path"], int(font_size * 1.25))
+        self.italics_font = ImageFont.truetype(self.config["italics_font_path"], font_size)
 
         self.width_spec = width_spec
         self.width_spec.sort()
@@ -88,10 +111,11 @@ class ImageTreeprocessor(markdown.treeprocessors.Treeprocessor):
         self.render_text(node.tail, (255, 255, 255, 255), False)
 
     def handle_blockquote(self, node):
-        self.indent += 16
+        indent = self.config["blockquote_indent"]
+        self.indent += indent
         self.newline()
         self.handle_children(node)
-        self.indent -= 16
+        self.indent -= indent
         self.newline()
 
     def handle_code(self, node):
@@ -118,7 +142,7 @@ class ImageTreeprocessor(markdown.treeprocessors.Treeprocessor):
     def handle_em(self, node):
         text = node.text
 
-        self.render_text(node.text, (255, 255, 255, 255), False, font=self.bold_font)
+        self.render_text(node.text, (255, 255, 255, 255), False, font=self.italics_font)
         self.handle_children(node)
         self.render_text(node.tail, (255, 255, 255, 255), False)
 
@@ -128,34 +152,54 @@ class ImageTreeprocessor(markdown.treeprocessors.Treeprocessor):
         font = getattr(self, node.tag + "_font")
         self.render_text(node.text, (255, 255, 255, 255), True, font=font)
         # TODO: Make this HR padding-bottom configurable
-        self.newline(12)
+        self.newline()
 
     def handle_hr(self, node):
         self.newline()
-        self.image_draw.line((4, self.image_y + 4, self.image_width - 4, self.image_y + 4), fill=(255, 255, 255, 255))
-        self.newline(16)
+        h = self.config["margin_bottom"]
+        horizontal_padding = self.config["hr_padding"]
+        self.image_draw.line((horizontal_padding, self.image_y + h / 2,
+                              self.image_width - horizontal_padding, self.image_y + h / 2), fill=(255, 255, 255, 255))
+        self.newline(h)
 
     def handle_li(self, node):
-        # Draw the bullet
-        draw = self.image_draw
-        (w, h) = draw.textsize("E", font=self.default_font)
-        x = self.image_x - BULLET_DIAMETER * 2
-        y = self.image_y + (h - BULLET_DIAMETER) / 2
-        draw.ellipse((x, y,
-                      x + BULLET_DIAMETER,
-                      y + BULLET_DIAMETER),
-                      outline=(255, 255, 255, 255),
+        list_type = self.list_types[-1]
+        if list_type == "unordered":
+            # Draw the bullet
+            draw = self.image_draw
+            (w, h) = draw.textsize("E", font=self.default_font)
+            x = self.image_x - BULLET_DIAMETER - self.config["bullet_outdent"]
+            y = self.image_y + (h - BULLET_DIAMETER) / 2
+            draw.ellipse((x, y,
+                          x + BULLET_DIAMETER,
+                          y + BULLET_DIAMETER),
+                          outline=(255, 255, 255, 255),
+                          fill=(255, 255, 255, 255))
+
+            self.render_text(node.text, (255, 255, 255, 255), True)
+            self.handle_children(node)
+        elif list_type == "ordered":
+            # Draw the number
+            draw = self.image_draw
+            current_number = "%d" % self.list_item_nums[-1]
+            print current_number
+            (w, h) = draw.textsize(current_number, font=self.default_font)
+            x = self.image_x - w - self.config["bullet_outdent"]
+            draw.text((x, self.image_y), current_number + ".",
+                      font=self.default_font,
                       fill=(255, 255, 255, 255))
 
-        self.render_text(node.text, (255, 255, 255, 255), False)
-        self.handle_children(node)
+            self.list_item_nums[-1] += 1
 
-        self.render_text(node.tail, (255, 255, 255, 255), True)
-        # TODO: Make padding-bottom of <li> configurable
-        self.newline(4)
+            self.render_text(node.text, (255, 255, 255, 255), True)
+            self.handle_children(node)
+
+        # REVIEW: Ignore tail text on li items b/c.  Is this okay?
+        # self.render_text(node.tail, (255, 255, 255, 255), True)
+        self.newline(self.config["list_item_margin_bottom"])
 
     def handle_node(self, node):
-        # print "Handling %s" % node.tag
+        print "Handling %s" % node.tag
         handlers = {
             "a": self.handle_a,
             "code": self.handle_code,
@@ -170,12 +214,28 @@ class ImageTreeprocessor(markdown.treeprocessors.Treeprocessor):
             "h6": self.handle_h,
             "hr": self.handle_hr,
             "li": self.handle_li,
+            "ol": self.handle_ol,
             "p": self.handle_p,
             "pre": self.handle_pre,
+            "strong": self.handle_strong,
             "ul": self.handle_ul,
         }
         handlers.get(node.tag, self.handle_unknown)(node)
-        # print "Done with %s" % node.tag
+        print "Done with %s" % node.tag
+
+    def handle_ol(self, node):
+        indent = self.config["list_indent"]
+        self.indent += indent
+        self.newline()
+
+        self.list_types.append("ordered")
+        self.list_item_nums.append(1)
+        self.handle_children(node)
+        self.list_item_nums = self.list_item_nums[:-1]
+        self.list_types = self.list_types[:-1]
+
+        self.indent -= indent
+        self.newline()
 
     def handle_p(self, node):
         self.render_text(node.text, (255, 255, 255, 255), False)
@@ -183,22 +243,40 @@ class ImageTreeprocessor(markdown.treeprocessors.Treeprocessor):
 
         # TODO: Make padding-bottom of <p> configurable
         self.render_text(node.tail, (255, 255, 255, 255), True)
-        self.newline(8)
+        self.newline(self.config["margin_bottom"])
 
     def handle_pre(self, node):
         old_in_pre = self.in_pre
         self.in_pre = True
-        self.indent += 8
+
+        indent = self.config["code_indent"]
+        self.indent += indent
         self.newline()
+
         self.handle_children(node)
-        self.indent -= 8
+
+        self.indent -= indent
+        self.newline()
+
         self.in_pre = old_in_pre
 
-    def handle_ul(self, node):
-        self.indent += 16
-        self.newline()
+    def handle_strong(self, node):
+        text = node.text
+
+        self.render_text(node.text, (255, 255, 255, 255), False, font=self.bold_font)
         self.handle_children(node)
-        self.indent -= 16
+        self.render_text(node.tail, (255, 255, 255, 255), False)
+
+    def handle_ul(self, node):
+        indent = self.config["list_indent"]
+        self.indent += indent
+        self.newline()
+
+        self.list_types.append("unordered")
+        self.handle_children(node)
+        self.list_types = self.list_types[:-1]
+
+        self.indent -= indent
         self.newline()
 
     def handle_unknown(self, node):
